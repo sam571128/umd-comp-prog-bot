@@ -184,25 +184,30 @@ async function getDailyLeaderboard(problems_db_key) {
     let users = await getData('DAILY_LB_USERS');
     if (!Array.isArray(users)) users = [];
 
-    const data = []
-    for (const user of users) {
-        const handle = await getData(user);
-        const submissions = await getSubmissions(handle);
-        let count = 0;
-        const solved = new Set();
-        for (sub of submissions) {
-            if (sub.verdict != 'OK') continue;
-            const contestId = sub.problem.contestId;
-            const index = sub.problem.index;
-            const prob_key = contestId + index;
-            if (prob_set.has(prob_key) && !solved.has(prob_key)) {
-                solved.add(prob_key);
-                count++;
+    const userPromises = users.map(async (user) => {
+        try {
+            const handle = await getData(user);
+            const submissions = await getSubmissions(handle);
+            let count = 0;
+            const solved = new Set();
+            for (const sub of submissions) {
+                if (sub.verdict != 'OK') continue;
+                const contestId = sub.problem.contestId;
+                const index = sub.problem.index;
+                const prob_key = contestId + index;
+                if (prob_set.has(prob_key) && !solved.has(prob_key)) {
+                    solved.add(prob_key);
+                    count++;
+                }
             }
+            return [count, user];
+        } catch (error) {
+            console.error(`Error processing user ${user}:`, error);
+            return [0, user];
         }
+    });
 
-        data.push([count, user]);
-    }
+    const data = await Promise.all(userPromises);
 
     const top_5 = [];
     data.sort((a, b) => b[0] - a[0]);
@@ -213,7 +218,7 @@ async function getDailyLeaderboard(problems_db_key) {
             top_5.at(-1).name += ' & ' + username;
             continue;
         }
-        if (top_5.length() >= 5) break;
+        if (top_5.length >= 5) break;
         const lb_obj = {name: username, score: count};
         top_5.push(lb_obj);
         prev = count;
